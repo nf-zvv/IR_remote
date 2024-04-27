@@ -7,7 +7,9 @@ src/main.c \
 src/uart.c \
 src/IR_NEC_transmitter.c \
 src/IR_NEC_receiver.c \
-src/IR_NEC_receiver_a.S
+src/IR_NEC_receiver_a.S \
+src/spi.c \
+src/nrf24.c
 
 # название контроллера и частота для компилятора
 MCU = atmega328p
@@ -15,7 +17,7 @@ F_CPU = 8000000
 
 # параметры для AVRDUDE
 DUDE_MCU = m328p
-PORT = COM5
+PORT = COM3
 PORTSPEED = 57600
 PROGRAMMER = arduino
 
