@@ -14,68 +14,10 @@
 #define LED PB5
 
 
-#define num_channels 126
+uint8_t rf_data_array[4];
+uint8_t rf_tx_address[5] = {0xE7,0xE7,0xE7,0xE7,0xE7};
 
-uint8_t values[num_channels];
-const int num_reps = 100;
 
-// Convert one digit to ascii hex
-unsigned char toHex(unsigned char digit)
-{
-    if (digit > 9) digit += 0x27; // adjust 0x0a-0x0f to come out 'a' - 'f'
-    digit += 0x30;                // to ascii
-    return digit;
-}
-
-uint8_t min(uint8_t a, uint8_t b)
-{
-    if (a < b) 
-        return a;
-    else 
-        return b;
-}
-
-void scan(void)
-{
-    nrf24_ce(LOW);
-    // Clear measurement values
-    for (uint8_t i = 0; i < num_channels; i++)
-        values[i] = 0;
-
-    // Scan all channels num_reps times
-    int rep_counter = num_reps;
-    while (rep_counter--)
-    {
-        int i = num_channels;
-        while (i--)
-        {
-            // Set RF channel i
-            nrf24_configRegister(RF_CH,i);
-
-            // Listen for a little
-            nrf24_powerUpRx();
-            _delay_us(150);
-            nrf24_powerUpTx();
-
-            // Did we get a carrier?
-            if ( nrf24_isCarrierDetected() ) {
-                ++values[i];
-            }
-        }
-    }
-
-    // Print out channel measurements, clamped to a single hex digit
-    int i = 0;
-    while ( i < num_channels )
-    {
-      if (values[i])
-        send_UART(toHex(min(0x0f,values[i])));
-      else
-        send_UART(45); // dash
-      ++i;
-    }
-    send_UART_str_P(PSTR("\r\n"));
-}
 
 int8_t hexCharToBin(char c)
 {
@@ -125,31 +67,16 @@ int main(void)
     spi_init();
     nrf24_init();
 
-    if (!nrf24_config(70,1))
+    if (!nrf24_config(70,2))
     {
         send_UART_str_P(PSTR("No nRF24 found!\r\n"));
     }
     else
     {
-        send_UART_str_P(PSTR("RF scanner Online!\r\n"));
+        send_UART_str_P(PSTR("RF transmitter Online!\r\n"));
 
-        // Print header
-        int i = 0;
-        // First line - high digit
-        while ( i < num_channels )
-        {
-            send_UART(toHex(i >> 4));
-            ++i;
-        }
-        send_UART_str_P(PSTR("\r\n"));
-        i = 0;
-        // Second line - low digit
-        while ( i < num_channels )
-        {
-            send_UART(toHex(i & 0x0f));
-            ++i;
-        }
-        send_UART_str_P(PSTR("\r\n"));
+        /* Set the device addresses */
+        nrf24_tx_address(rf_tx_address);
 	}
 
 	// Разрешаем прерывания
@@ -159,7 +86,6 @@ int main(void)
 	int8_t IR_address_H, IR_address_L, IR_command_H, IR_command_L;
 
 	while (1) {
-		scan();
 		if (UART_RX_Ready())
 		{
 			// Выключить ожидание приема данных по IR
@@ -186,13 +112,31 @@ int main(void)
 		}
 		if (IR_available())
 		{
-			uint8_t addr = IR_get_address();
-			binToHex(addr, buffer);
+			uint8_t IR_addr = IR_get_address();
+			binToHex(IR_addr, buffer);
 			send_UART_str(buffer);
-			uint8_t cmd = IR_get_command();
-			binToHex(cmd, buffer);
+			uint8_t IR_cmd = IR_get_command();
+			binToHex(IR_cmd, buffer);
 			send_UART_str(buffer);
 			send_UART_str_P(PSTR("\r\n"));
+            /* Fill the data buffer */
+            rf_data_array[0] = IR_addr;
+            rf_data_array[1] = IR_cmd;
+            /* Automatically goes to TX mode */
+            nrf24_send(rf_data_array);
+            /* Wait for transmission to end */
+            while(nrf24_isSending());
+            /* Make analysis on last tranmission attempt */
+            uint8_t rf_status = nrf24_lastMessageStatus();
+
+            if(rf_status == NRF24_TRANSMISSON_OK)
+            {                    
+                send_UART_str_P(PSTR("Tranmission went OK\r\n"));
+            }
+            else if(rf_status == NRF24_MESSAGE_LOST)
+            {                    
+                send_UART_str_P(PSTR("Message is lost ...\r\n"));
+            }
 		}
 	}
 	return 0;
